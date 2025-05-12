@@ -1,0 +1,1243 @@
+---
+title: "Untitled"
+author: "A. Clason"
+date: "October 26, 2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+#knitr::opts_chunk$set(echo = TRUE)
+library(raster)
+library(sf)
+#library(nngeo)
+#library(stars)
+library(dplyr)
+library(data.table)
+library(fasterize)
+#library(caret)
+
+# A helper function that erases all of y from x:
+st_erase = function(x, y) st_difference(x, st_union(st_combine(y)))
+#Tweeds_Bound <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Tweedsmuir.shp")[1,]
+#Study_area <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/StudyAreaBoundary.shp")
+
+#to import and convert .kmz:
+read_keyhole <- function(file) {
+  # get file extension
+  ext <- strsplit(basename(file), split = '//.')[[1]][-1]
+  # if kml
+  if (ext == 'kml') {
+    layers <- st_layers(file)$name
+    if (length(layers) > 1) {
+      return(Reduce('rbind', lapply(layers, sG::read_sf, dsn = file)))
+    }
+    return(read_sf(file))
+  } else {
+    target_file <- '.temp.kml.zip'
+    fs::file_copy(file, target_file, overwrite = T)
+    unzip(target_file, overwrite = T)
+    sf_out <- read_sf('doc.kml')
+    fs::file_delete(target_file)
+    fs::file_delete('doc.kml')
+    return(sf_out)
+  }
+}
+```
+
+
+Import layersfrom 2020 field work, clean them, and write out files of tracks and WBP points - I think I can skip this??
+```{r}
+#Day 1
+Day1GPS <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Waypoints_28-OCT-20.gpx", layer = "waypoints")
+write_sf(Day1GPS,"Day1GPS.shp")
+#Day 2 (note Day 2 track includes Day 1)
+Day2GPS <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Waypoints_30-OCT-20.gpx", layer = "waypoints")
+Day2Track <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Track_30-OCT-20 212827.gpx", layer = "tracks")
+write_sf(Day2GPS,"Day2GPS.shp")
+write_sf(Day2Track,"Day2Track.shp")
+#Day 3
+Day3GPS <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Waypoints_11-NOV-20.gpx", layer = "waypoints")
+Day3Track <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Track_11-NOV-20 224234.gpx", layer = "tracks")
+write_sf(Day3GPS,"Day3GPS.shp")
+write_sf(Day3Track,"Day3Track.shp")
+#Day 4
+Day4GPS <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Waypoints_25-NOV-20.gpx", layer = "waypoints")
+Day4Track <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Track_25-NOV-20 140427.gpx", layer = "tracks")
+write_sf(Day4GPS,"Day4GPS.shp")
+write_sf(Day4Track,"Day4Track.shp")
+
+#Combine all days together
+AllPts <- rbind(Day1GPS,Day2GPS,Day3GPS,Day4GPS)
+AllTracks <- rbind(Day2Track,Day3Track,Day4Track)
+
+#project to NAD83 albers
+AllPts <- st_transform(AllPts ,crs="+proj=aea +lat_0=45 +lon_0=-126 +lat_1=50 +lat_2=58.5 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs ")
+AllTracks <- st_transform(AllTracks ,crs="+proj=aea +lat_0=45 +lon_0=-126 +lat_1=50 +lat_2=58.5 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs ")
+
+#join data entry attributes to sf file - Still need to double check the data entry!
+#write out a Shapefiles of all WBP points and track
+
+write_sf(AllPts,"Allpts.shp")
+write_sf(AllTracks,"AllTracks.shp")
+
+wbpPlant <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/PlantingSites2021.shp")
+wbpPlant$Name[1]<-"Nadi"
+wbpPlant$Name[2]<-"Twee"
+wbpPlant$Name[3]<-"Atna"
+
+NadinaPlant <- read_sf("G:/Spatial Data/Whitebark pine/Nadina_WBP_plant.shp")
+write_sf(NadinaPlant,"G:/Spatial Data/Whitebark pine/Nadina_WBP_plant.kml")
+
+PosNadPl <- read_sf("G:/Spatial Data/Whitebark pine/NadinaFirePlant/Pos_CCN_WBP.shp")
+write_sf(PosNadPl,"G:/Spatial Data/Whitebark pine/NadinaFirePlant/Pos_CCN_WBP.kml")
+
+
+write_sf(wbpPlant, "G:/Spatial Data/Whitebark pine/Tweedsmuir/PlantingSites2021.gpx", driver="GPX",overwrite=TRUE)
+```
+
+Planting recce point chunk - after the work
+```{r}
+ReccePts <- read_sf("C:/Users/Alana2012/Sync/BVRC/WBP program/Restoration/Planting/2021/Waypoints_08-JUL-21.gpx",
+                    layer = "waypoints")
+write_sf(ReccePts, "G:/Spatial Data/Whitebark pine/Tweedsmuir/ReccePts.gpx", driver="GPX",overwrite=TRUE)
+write_sf(ReccePts, "G:/Spatial Data/Whitebark pine/Tweedsmuir/ReccePts.kml",overwrite=TRUE)
+write_sf(ReccePts, "G:/Spatial Data/Whitebark pine/Tweedsmuir/ReccePts.shp",overwrite=TRUE)
+
+BlanchTrk <- read_sf("G:/Spatial Data/Whitebark pine/Planting_2021/Track_13-JUL-21 165752.gpx", layer = "tracks")
+write_sf(BlanchTrk, "G:/Spatial Data/Whitebark pine/Planting_2021/BlanchTrk.shp",overwrite=TRUE)
+
+#blanchet points
+BlanchPts <- read_sf("G:/Spatial Data/Whitebark pine/Planting_2021/Waypoints_13-JUL-21.gpx", layer = "waypoints")
+write_sf(BlanchPts, "G:/Spatial Data/Whitebark pine/Planting_2021/BlanchPts.shp",overwrite=TRUE)
+#nadina fire points
+NadPts <- read_sf("G:/Spatial Data/Whitebark pine/Planting_2021/Waypoints_14-JUL-21.gpx", layer = "waypoints")
+write_sf(NadPts, "G:/Spatial Data/Whitebark pine/Planting_2021/NadPts.shp",overwrite=TRUE)
+
+#Atna site
+AtnaTrck <- read_sf("C:/Users/Alana2012/Sync/BVRC/WBP program/Restoration/Planting/2021/AtnaBayPlanttracks.kml")
+AtnaTrck <- st_zm(AtnaTrck,drop=TRUE,what = "ZM")
+write_sf(AtnaTrck, "G:/Spatial Data/Whitebark pine/Planting_2021/AtnaTrck.shp",overwrite=TRUE)
+
+#monitoring plots
+
+
+```
+
+Health data
+```{r}
+hd <- read_sf("D:/Spatial Data/Whitebark pine/HealthTransects/plots.June20.2022.shp")
+hd_dt <- as.data.table(hd)
+hd_dt[Name=="W0088",.(descriptio)] #43% infected
+hd_dt[Name=="W0087",.(descriptio)] #50% infected
+
+
+```
+
+
+
+Living labs layers
+```{r}
+surv <- read_sf("C:/Users/Alana2012/ALANA_FILES/GitHub/WBP/WBP_module/SurveyTrack.shp")
+write_sf(surv,"C:/Users/Alana2012/Sync/BVRC/WBP program/Living Labs/Maps/SurveyTrack.kml")
+
+#wbp_pts <- read_sf("C:/Users/Alana2012/ALANA_FILES/GitHub/WBP/WBP_module/WBP_dat.shp")
+wbp_pts <- read_sf("D:/Github/WBP/Inputs/SpatialData/Mapping/WBP_dat.shp")
+write_sf(wbp_pts,"C:/Users/Alana2012/Sync/BVRC/WBP program/Living Labs/Maps/wbp_pts.kml")
+#remove notes to merge:
+wbp_pts_no_notes <- wbp_pts %>%
+  select(.,-c("Notes"))
+write_sf(wbp_pts_no_notes, "D:/Github/WBP/Inputs/SpatialData/Mapping/N_tweeds_WBP.shp")
+
+#from Mark's work on whitesail:
+WS <- data.table(lat=53.635902, long=-127.067781)
+class(WS)
+write_sf(st_as_sf(WS, coords = c("long","lat"), crs="+proj=longlat +datum=WGS84 +no_defs"),"C:/Users/Alana2012/Sync/BVRC/WBP program/Living Labs/Maps/wbp_WS.kml")
+
+
+```
+
+Wetzinkwa Community Forest
+```{r}
+WCFcuts <- "C:/Users/Alana2012/Sync/BVRC/SORTIE position/Funding/Wetzinkwa/WCF_PermitBlocks.kmz"
+Loc_list <- lapply(WCFcuts,read_keyhole)
+Locs <- do.call(rbind.data.frame, Loc_list)
+as.data.table(Locs)
+WCFcuts_kml <- st_zm(Locs, drop = TRUE, what = "ZM")
+write_sf(WCFcuts_kml,"C:/Users/Alana2012/Sync/BVRC/SORTIE position/Funding/Wetzinkwa/WCF_PermitBlocks.kml")
+```
+
+
+PhD data sharing chunks
+```{r}
+#read in the files that have all the plot data:
+dat_Analysis <- fread("24. Sdl_Tr_PlotData_AllAbs_RastID.csv", na.strings = "n/a") #used in Bayes model
+dat_Shp <- fread("Clason_All_PhD_data.csv",na.strings = "n/a") #from the shapefiles 
+
+#Alana's plots:
+ACplots <- dat_Analysis[grep("AC",dat_Analysis[,PlotID])] #from the HBM 
+ACplots2 <- dat_Shp[grep("AC",dat_Shp[,PlotID])] 
+ACplots <- merge(ACplots, ACplots2[,.(PlotID,Total_Inf)], by="PlotID")
+ACplots[,PA_rust:=ifelse(Total_Inf>0,1,0)] #condition if there's rust
+ACplots[is.na(Total_Inf),PA_rust:=NA]
+#This one is for Jodie
+write_sf(st_as_sf(ACplots[In_Out>0],coords = c("Longitude","Latitude"), crs="+proj=longlat +datum=WGS84 +no_defs"),
+         "AC_PhD_plots.shp")
+write.csv(ACplots[In_Out>0],"AC_PhD_plots.csv")
+#This one is for Don and Randy
+write_sf(st_as_sf(ACplots[SiteName=="Valemount",.(PlotID,Latitude,Longitude,Sdl_Live_ha,Tree_Live_ha,
+                                                  Elevation,mnpas,mndd5,mncmd,solrad_250,PA_rust)],
+                  coords = c("Longitude","Latitude"), crs="+proj=longlat +datum=WGS84 +no_defs"),
+         "ValeMt_plots.kml")
+write.csv(ACplots[SiteName=="Valemount",.(PlotID,Latitude,Longitude,Sdl_Live_ha,Tree_Live_ha,
+                                                  Elevation,mnpas,mndd5,mncmd,solrad_250,PA_rust)],
+          "ValeMt_plots.csv")
+
+```
+
+Recent observations
+```{r}
+Wiggil_WBP <- "G:/Spatial Data/Whitebark pine/Location updates/Whitebark_Wigill.kmz"
+Loc_list <- lapply(Wiggil_WBP,read_keyhole)
+Locs <- do.call(rbind.data.frame, Loc_list)
+Wiggle_WBP <- st_zm(Locs, drop = TRUE, what = "ZM")
+write_sf(Wiggle_WBP,"G:/Spatial Data/Whitebark pine/Location updates/Wiggle_WBP.shp") #Day 1 track
+```
+
+Sybille atna bay convertion 
+```{r}
+a_WBP <- "C:/Users/Alana2012/Sync/BVRC/WBP program/American forests/Atna Upper polygon_SH_October 2021.kmz"
+Loc_list <- lapply(a_WBP,read_keyhole)
+Locs <- do.call(rbind.data.frame, Loc_list)
+a_WBP <- st_zm(Locs, drop = TRUE, what = "ZM")
+write_sf(a_WBP,"C:/Users/Alana2012/Sync/BVRC/WBP program/American forests/Atna_Upper.shp")
+
+b_WBP <- "C:/Users/Alana2012/Sync/BVRC/WBP program/American forests/Atna Lower polygon_SH_October 2021.kmz"
+Loc_list <- lapply(b_WBP,read_keyhole)
+Locs <- do.call(rbind.data.frame, Loc_list)
+b_WBP <- st_zm(Locs, drop = TRUE, what = "ZM")
+write_sf(b_WBP,"C:/Users/Alana2012/Sync/BVRC/WBP program/American forests/Atna_Lower.shp")
+write_sf(rbind(a_WBP,b_WBP),"C:/Users/Alana2012/Sync/BVRC/WBP program/American forests/AtnaPlant.shp")
+
+```
+
+Previous plantings
+```{r}
+
+
+```
+
+Restoration plantings 
+```{r}
+# 2021 plantings (Tweedsmuir, FCI Nadina, Atna bay)
+#Tweeds_GPS <- read_sf("./inputs/data/Waypoints_13-JUL-21.gpx", layer = "waypoints")
+#write_sf(Tweeds_GPS,"./inputs/data/TweedsPts.shp")
+
+#Tweeds_tracks <- read_sf("./inputs/data/Track_13-JUL-21 165752.gpx", layer = "tracks")
+#write_sf(Tweeds_tracks,"./inputs/data/Tweeds_tracks.shp")
+
+Blanchet_Plant <- read_sf("./inputs/data/BlanchetPlant.shp")
+Blanchet_Plant$area <- st_area(Blanchet_Plant)
+Blanchet_Plant$area/10000
+
+NadinaPlant <- read_sf("./inputs/data/Nadina_WBP_Actual.shp")
+plot(NadinaPlant$geometry)
+st_area(NadinaPlant)/10000
+
+AtnaPlant2021 <- read_sf("C:/Users/Alana2012/Sync/BVRC/WBP program/Funding/American forests/AtnaPlant.shp")
+
+##previous fire plantings
+Crystal_shp <- read_sf("C:/Users/Alana2012/ALANA_FILES/Whitebark Pine/Consultations/FLNRO biodiversity atlas/Skeena Region Biodiversity Atlas/Crystal_Restoration.shp")
+Joshua_shp <- read_sf("C:/Users/Alana2012/ALANA_FILES/Whitebark Pine/Consultations/FLNRO biodiversity atlas/Skeena Region Biodiversity Atlas/Joshua_Restoration.shp")
+AtnaBay2017 <- read_sf("C:/Users/Alana2012/ALANA_FILES/Work/SERN/Data capture contract/WBP_Final_Deliverables/Appendix_C/Rawdata/Kml_S_Haeussler/Atna Bay.kml")
+Atna2017Poly <- AtnaBay2017 %>% 
+  dplyr::summarise() %>%
+  st_cast("POLYGON") %>%
+  st_convex_hull()
+NanikaFalls <- read_sf("C:/Users/Alana2012/Sync/BVRC/WBP program/Restoration/Kidprice 2017 trees/Kidprice_2017_zones.shp")
+
+#non-fire plantings
+WTZ_H_shp <- read_sf("C:/Users/Alana2012/ALANA_FILES/Whitebark Pine/Consultations/FLNRO biodiversity atlas/Skeena Region Biodiversity Atlas/WetzinkwaHighElev.shp")
+HBM_shp <- read_sf("C:/Users/Alana2012/ALANA_FILES/Whitebark Pine/Consultations/FLNRO biodiversity atlas/Skeena Region Biodiversity Atlas/HBM_wbp_alpine.shp")
+WTZ_M_kml <- read_sf("C:/Users/Alana2012/ALANA_FILES/Work/SERN/Data capture contract/WBP_Final_Deliverables/Appendix_C/Rawdata/Kml_S_Haeussler/WTZ Mid.kml")
+WTZ_L_kml <- read_sf("C:/Users/Alana2012/ALANA_FILES/Work/SERN/Data capture contract/WBP_Final_Deliverables/Appendix_C/Rawdata/Kml_S_Haeussler/WTZ Low Final.kml")
+PiperDown_kml <- read_sf("C:/Users/Alana2012/ALANA_FILES/Work/SERN/Data capture contract/WBP_Final_Deliverables/Appendix_C/Rawdata/Kml_S_Haeussler/Piper Down.kml")
+#McBrid_pts_shp <- read_sf("C:/Users/Alana2012/ALANA_FILES/Work/SERN/Data capture contract/WBP_Final_Deliverables/Appendix_C/Rawdata/Kml_S_Haeussler/McBride restoration site Doherty/McBrideFinal.shp")
+McBrid_poly1_shp <- read_sf("C:/Users/Alana2012/ALANA_FILES/Work/SERN/Data capture contract/WBP_Final_Deliverables/Appendix_C/Rawdata/Kml_S_Haeussler/McBride restoration site Doherty/McBride1Polygon.shp")
+McBrid_poly2_shp <- read_sf("C:/Users/Alana2012/ALANA_FILES/Work/SERN/Data capture contract/WBP_Final_Deliverables/Appendix_C/Rawdata/Kml_S_Haeussler/McBride restoration site Doherty/McBride2Polygon.shp")
+
+#merge all the fire plantings together
+Blanchet_Plant<- st_transform(Blanchet_Plant,crs=crs(Crystal_shp))
+NadinaPlant<- st_transform(NadinaPlant,crs=crs(Crystal_shp))
+AtnaPlant2021<- st_transform(AtnaPlant2021,crs=crs(Crystal_shp))
+Atna2017Poly<- st_transform(Atna2017Poly,crs=crs(Crystal_shp)) #point feature
+NanikaFalls <- st_transform(NanikaFalls,crs=crs(Crystal_shp))
+
+Blanchet_Plant$Name <- "Blanchet"
+NadinaPlant$Name <- "Nadina"
+Crystal_shp$Name <- "Crystal"
+Joshua_shp$Name <- "Joshua"
+Atna2017Poly$Name <- "Atna"
+AtnaPlant2021$Name <- c("Atna_upper","Atna_lower")
+NanikaFalls$Name <- c("Nanika_upper","Nanika_lower")
+
+Blanchet_Plant$YearPlanted <- 2021
+NadinaPlant$YearPlanted <- 2021
+Crystal_shp$YearPlanted <- 2011
+Joshua_shp$YearPlanted <- 2011
+AtnaPlant2021$YearPlanted <- 2021
+Atna2017Poly$YearPlanted <- 2014
+NanikaFalls$YearPlanted <- 2014
+
+fire_restoration <- rbind(Blanchet_Plant %>% dplyr::select("Name","YearPlanted","geometry"),
+                      NadinaPlant %>% dplyr::select("Name","YearPlanted","geometry"),
+                      AtnaPlant2021 %>% dplyr::select("Name","YearPlanted","geometry"),
+                      Crystal_shp %>% dplyr::select("Name","YearPlanted","geometry"),
+                      Joshua_shp %>% dplyr::select("Name","YearPlanted","geometry"),
+                      Atna2017Poly %>% dplyr::select("Name","YearPlanted","geometry"),
+                      NanikaFalls %>% dplyr::select("Name","YearPlanted","geometry"))
+
+write_sf(fire_restoration,"Fire_restoration.shp")
+
+rds <- read_sf("E:/Spatial Data/Roads/DRA_DGTL_ROAD_ATLAS_MPAR_SP/DRA_MPAR_line.shp")
+unique(rds$RDNAME)
+highways <- rds %>% dplyr::filter(RDNAME %in% grep("Hwy",rds$RDNAME,value=TRUE))
+write_sf(highways, "E:/Spatial Data/Roads/highways_CentBC.shp")
+
+#just removing that one outlier in the range map - I still need to fix the map or refind my pervious version
+wpef_range <- read_sf("E:/Spatial Data/Whitebark pine/WBP_range_2014_d.shp")
+wpef_range_Nrem <- wpef_range %>% dplyr::filter(!row_number() %in% 354)
+wpef_range_Nrem <- st_zm(wpef_range_Nrem,drop=TRUE)
+
+write_sf(wpef_range_Nrem,"wpef_range_Nrem.shp")
+
+#making several fire maps to show fire progression
+fires <- read_sf("E:/Spatial Data/Fire/Historic fire/H_FIRE_PLY_polygon.shp")
+fires2000_2005 <- fires %>% dplyr::filter(FIRE_YEAR > 1999 & FIRE_YEAR <= 2005)
+fires2006_2010 <- fires %>% dplyr::filter(FIRE_YEAR > 2005 & FIRE_YEAR <= 2010)
+fires2011_2015 <- fires %>% dplyr::filter(FIRE_YEAR > 2010 & FIRE_YEAR <= 2015)
+fires2016_2020 <- fires %>% dplyr::filter(FIRE_YEAR > 2015 & FIRE_YEAR <= 2020)
+fires_2021 <-read_sf("E:/Spatial Data/Fire/prot_current_fire_polys/prot_current_fire_polys.shp")
+
+write_sf(fires2000_2005,"E:/Spatial Data/Fire/fires2000_2005.shp")
+write_sf(fires2006_2010,"E:/Spatial Data/Fire/fires2006_2010.shp")
+write_sf(fires2011_2015,"E:/Spatial Data/Fire/fires2011_2015.shp")
+write_sf(fires2016_2020,"E:/Spatial Data/Fire/fires2016_2020.shp")
+
+
+```
+
+
+
+
+Marking new boundaries, given loss of spatial data.
+```{r}
+park_shp <- read_sf("E:/Spatial Data/Parks/TA_PARK_ECORES_PA_SVW/TA_PEP_SVW_polygon.shp")
+SA_tweeds_Surv <- read_sf("SmTwds_SA.shp")
+SA_tweeds_Surv_parks <- st_intersection(park_shp,SA_tweeds_Surv)
+write_sf(SA_tweeds_Surv_parks, "E:/Spatial Data/Parks/SA_tweeds_Surv_parks.kml")
+
+Tweeds <- park_shp %>% filter(PROT_NAME=="TWEEDSMUIR PARK")
+plot(Tweeds$geometry)
+write_sf(Tweeds, "Tweeds.shp")
+
+#Read in study area VRIs in 4 tiles
+VRI_20_SW <- read_sf("E:/Spatial Data/Parks/Tweeds_2020_1/VEG_R1_PLY_polygon.shp")
+VRI_20_SW_Pa <- VRI_20_SW %>% filter(LBL_SPECIS=="Pa")
+plot(VRI_20_SW_Pa$geometry)
+
+VRI_20_2 <- read_sf("E:/Spatial Data/Parks/Tweeds2/VEG_R1_PLY_polygon.shp")
+VRI_20_2_Pa <- VRI_20_2 %>% filter(LBL_SPECIS=="Pa")
+plot(VRI_20_2_Pa$geometry)
+VRI_20_3 <- read_sf("E:/Spatial Data/Parks/Tweeds3/VEG_R1_PLY_polygon.shp")
+VRI_20_3_Pa <- VRI_20_3 %>% filter(LBL_SPECIS=="Pa")
+plot(VRI_20_3_Pa$geometry)
+VRI_20_4 <- read_sf("E:/Spatial Data/Parks/Tweeds4/VEG_R1_PLY_polygon.shp")
+VRI_20_4_Pa <- VRI_20_4 %>% filter(LBL_SPECIS=="Pa")
+plot(VRI_20_4_Pa$geometry)
+rm(VRI_20_SW,VRI_20_2,VRI_20_3,VRI_20_4)
+gc()
+
+VRI20_pa <- rbind(VRI_20_SW_Pa,VRI_20_2_Pa,VRI_20_3_Pa,VRI_20_4_Pa)
+write_sf(VRI20_pa,"VRI20_pa_SvAr.shp")
+write_sf(VRI20_pa,"VRI20_pa_SvAr.kml")
+
+
+#Not working because for some reason the R1 layer wasn't the same
+colsInterest <- c("FEATURE_ID","POLYGON_ID","INTERPRETA","ATTRIBUTIO","SPECIES_CD","SPECIES_PC","SPECIES__1",
+                  "SPECIES__2", "SPECIES__3", "SPECIES__4", "SPECIES__5", "SPECIES__6","SPECIES__7", 
+                  "SPECIES__8", "SPECIES__9", "SPECIES_10","VRI_LIVE_S","VRI_DEAD_S","geometry")
+VRI_20_SW <- as.data.table(VRI_20_SW)
+##Querying the VRI for WBP
+VRI_20_SW_Sht <- VRI_20_SW[,..colsInterest][SPECIES_CD=="PA"|SPECIES__1=="PA"|SPECIES__3=="PA"|SPECIES__5=="PA"|
+                        SPECIES__7=="PA"|SPECIES__9=="PA"]
+plot(st_as_sf(VRI20_shrt[SPECIES__3=="PA"])[,1])
+write_sf(VRI20_shrt,"pa_2020Vri_tweeds.shp")
+
+
+```
+
+2021 summer pts
+```{r}
+
+#Alana gps
+Alana_gps <- list()
+Alana_gps[[1]] <- read_sf("./AlanaGPS/Waypoints_12-SEP-21.gpx", layer = "waypoints")
+Alana_gps[[2]] <- read_sf("./AlanaGPS/Waypoints_13-SEP-21.gpx", layer = "waypoints")
+Alana_gps[[3]] <- read_sf("./AlanaGPS/Waypoints_14-SEP-21.gpx", layer = "waypoints")
+Alana_gps[[4]] <- read_sf("./AlanaGPS/Waypoints_15-SEP-21.gpx", layer = "waypoints")
+Alana_gps[[5]] <- read_sf("./AlanaGPS/Waypoints_16-SEP-21.gpx", layer = "waypoints")
+Alana_gps[[6]] <- read_sf("./AlanaGPS/Waypoints_22-JUL-21.gpx", layer = "waypoints")
+Alana_gps[[7]] <- read_sf("./AlanaGPS/Waypoints_26-JUL-21.gpx", layer = "waypoints")
+Alana_gps[[8]] <- read_sf("./AlanaGPS/Waypoints_27-JUL-21.gpx", layer = "waypoints")
+Alana_gps_a <- rbindlist(Alana_gps)
+
+#Kira gps
+Kira_gps <- list()
+Kira_gps[[1]] <- read_sf("./KiraGPS/Waypoints_2021-07-22.gpx", layer = "waypoints")
+Kira_gps[[2]] <- read_sf("./KiraGPS/Waypoints_2021-07-28.gpx", layer = "waypoints")
+Kira_gps[[3]] <- read_sf("./KiraGPS/Waypoints_2021-09-12.gpx", layer = "waypoints")
+Kira_gps[[4]] <- read_sf("./KiraGPS/Waypoints_2021-09-13.gpx", layer = "waypoints")
+Kira_gps[[5]] <- read_sf("./KiraGPS/Waypoints_2021-09-14.gpx", layer = "waypoints")
+Kira_gps[[6]] <- read_sf("./KiraGPS/Waypoints_2021-09-15.gpx", layer = "waypoints")
+Kira_gps[[7]] <- read_sf("./KiraGPS/Waypoints_2021-09-16.gpx", layer = "waypoints")
+Kira_gps_a <- rbindlist(Kira_gps)
+
+a_k_gps <- rbind(Alana_gps_a %>% dplyr::select("name","geometry"),Kira_gps_a %>% dplyr::select("name","geometry"))
+write_sf(a_k_gps,"a_k_gps.shp")
+
+```
+
+
+Seed collection
+```{r}
+
+old_trees <- fread("./Inputs/Data/Whitebark_TSC_seeds_AC2022_treeSummary.csv")
+#old_trees[,NewLong := as.numeric(ifelse(Long < 0, Long, as.numeric(paste0("-",Long))))]
+old_trees_sf <- st_make_valid(st_as_sf(old_trees, coords = c("Lat", "NewLong"), crs = 4326))
+plot(old_trees_sf$geometry)
+
+# creating a winners layer and losers layer
+all_trees <- read_sf("./Inputs/SpatialData/Restoration/AllCollectionTrees.shp")
+all_trees_dt <- as.data.table(all_trees)
+all_trees_dt <- all_trees_dt[,.(Parent.Tre,Coll..Tree,Origin,Coll..Yr.,
+                                Ht..m., DBH..cm., geometry)]
+setnames(all_trees_dt, old = c("Parent.Tre","Coll..Tree","Origin", "Coll..Yr.", "Ht..m.", "DBH..cm."),
+         new = c("TreeTag", "FieldID","Site", "CollYr", "Ht", "DBH"))
+all_trees_dt[,FieldID := gsub(" ", "",FieldID)]
+
+#high = high rust resistance (do collect). low = low rust resistance (don't collect)
+high_trees <- all_trees_dt[TreeTag == "1080"|TreeTag == "1035"|TreeTag == "1037"|
+                               TreeTag == "1089"]
+med_trees <- all_trees_dt[TreeTag == "1076"|TreeTag == "1030"|TreeTag == "1085"]
+
+low_trees <- all_trees_dt[TreeTag == "1026"|TreeTag == "1028"|TreeTag == "1029"|
+                            TreeTag == "1068"|TreeTag == "1072"|TreeTag == "1078"|
+                            TreeTag == "1081"|TreeTag == "1045"]
+write_sf(high_trees, "./Inputs/SpatialData/Restoration/high_rr.shp")
+write_sf(high_trees, "./Inputs/SpatialData/Restoration/high_rr.kml")
+
+write_sf(med_trees, "./Inputs/SpatialData/Restoration/med_rr.shp")
+write_sf(med_trees, "./Inputs/SpatialData/Restoration/med_rr.kml")
+
+write_sf(low_trees, "./Inputs/SpatialData/Restoration/low_rr.shp")
+write_sf(low_trees, "./Inputs/SpatialData/Restoration/low_rr.kml")
+
+#updating Sybille's raw tree screening data
+raw_trees <- fread("./Inputs/Data/Raw_tree_screening.csv")
+
+tr_screen <- melt(raw_trees, 
+                  measure.vars = c("Cartwright", "Murray", "Maholovich-Idaho", "Sniezko-Dorena"),
+                  variable.name = "Screen_facility", value.name = "Actual_inoc_year")
+tr_screen <- tr_screen[,.(Family,UniqueNo,Collected,Inoc_year,Screen_facility,Actual_inoc_year,
+                          MurrayIndex, Index_year = 2019 , SH_2019_Rank ,Notes)]
+#write out to input new data
+write.csv(tr_screen, "./Inputs/Data/Ed_tree_screening.csv", row.names = FALSE)
+
+#after inputting the new data, read it back in and summarize the ranking
+
+tr_scrn <- fread("./Inputs/Data/Ed_tree_screening_2022entered.csv")
+tr_scrn_ind <- tr_scrn[!is.na(MurrayIndex) & Screen_facility == "Murray"]
+
+tr_scrn_ind[,rank := ifelse(MurrayIndex < 1, "VH",
+                             ifelse(MurrayIndex < 2, "H",
+                                    ifelse(MurrayIndex < 3, "M",
+                                           "L")))]
+tr_scrn_ind <- tr_scrn_ind[,-c("Notes")]
+tr_scrn_ind[,.(Family, UniqueNo,MurrayIndex,Index_year,SH_2019_Rank,rank)]
+
+length(tr_scrn_ind[Index_year ==2022,.(Family, UniqueNo,MurrayIndex,Index_year,SH_2019_Rank,rank)]$rank)
+unique(tr_scrn_ind[Index_year ==2022,.(Family, UniqueNo,MurrayIndex,Index_year,SH_2019_Rank,rank)]$UniqueNo)
+
+length(tr_scrn_ind[Index_year ==2019,.(Family, UniqueNo,MurrayIndex,Index_year,SH_2019_Rank,rank)]$rank)
+unique(tr_scrn_ind[Index_year ==2019,.(Family, UniqueNo,MurrayIndex,Index_year,SH_2019_Rank,rank)]$UniqueNo)
+
+#high = high rust resistance (do collect). low = low rust resistance (don't collect)
+tr_scrn_ind[Family=="DU04", Family:= "DU4"]
+tr_scrn_ind[Family=="DU4"]
+
+high_tr_1 <- tr_scrn_ind[!is.na(UniqueNo) & Index_year ==2022 & rank=="H"|
+                           !is.na(UniqueNo) & Index_year ==2022 & rank=="VH",
+                         .(Family,UniqueNo,rank)]$UniqueNo
+high_tr_2 <- tr_scrn_ind[is.na(UniqueNo) & Index_year ==2022 & rank=="H"|
+                           is.na(UniqueNo) & Index_year ==2022 & rank=="VH",
+                         .(Family,UniqueNo,rank)]$Family
+
+med_tr <- tr_scrn_ind[!is.na(UniqueNo) & Index_year ==2022 & rank=="M",
+                      .(UniqueNo,rank)]$UniqueNo
+med_tr_2 <- tr_scrn_ind[is.na(UniqueNo) & Index_year ==2022 & rank=="M",
+                         .(Family,UniqueNo,rank)]$Family
+
+low_tr <- tr_scrn_ind[!is.na(UniqueNo) & Index_year ==2022 & rank=="L",
+                             .(UniqueNo,rank)]$UniqueNo
+low_tr_2 <- tr_scrn_ind[is.na(UniqueNo) & Index_year ==2022 & rank=="L",
+                         .(Family,UniqueNo,rank)]$Family
+
+# select the gps points associated with high, med, low rust resistance
+high_trees <- all_trees_dt[TreeTag %in% high_tr_1 | FieldID %in% high_tr_2]
+med_trees <- all_trees_dt[TreeTag %in% med_tr | FieldID %in% med_tr_2]
+low_trees <- all_trees_dt[TreeTag %in% low_tr | FieldID %in% low_tr_2]
+
+write_sf(med_trees, "./Inputs/SpatialData/Restoration/med_rr.shp")
+write_sf(med_trees, "./Inputs/SpatialData/Restoration/med_rr.kml")
+
+write_sf(low_trees, "./Inputs/SpatialData/Restoration/low_rr.shp")
+write_sf(low_trees, "./Inputs/SpatialData/Restoration/low_rr.kml")
+
+write_sf(high_trees, "./Inputs/SpatialData/Restoration/high_rr.shp")
+write_sf(high_trees, "./Inputs/SpatialData/Restoration/high_rr.kml")
+
+
+ml <- fread("D:/Sync/BVRC/WBP program/Restoration/Seed Collection/2022 BVRC tree screening candidates.csv",
+            na.strings = "n/a")
+ml <- ml[!is.na(easting)]
+ml_9u <- st_as_sf(ml, coords = c("easting","northing"), crs = 3156)
+ml_9u_LL <- st_transform(ml_9u, crs = "+proj=longlat +datum=NAD83")
+ml_9u_LL_dt <- as.data.table(cbind(ml_9u_LL %>% 
+                                     select(Unique_ID),st_coordinates(ml_9u_LL)))
+ml_9u_LL_dt[,geometry:=NULL]
+ml_9u_LL_dt
+
+
+all_coll_22 <- read_sf("./Inputs/SpatialData/Restoration/Caging2022/AllSites_Caging2022.shp")
+
+
+plot(st_coordinates(st_transform(all_coll_22,crs = "+proj=longlat +datum=NAD83")))
+
+all_coll_22_dt <- data.table(all_coll_22)
+all_coll_22_dt <- cbind(all_coll_22_dt[,.(Name)],
+                        st_coordinates(st_transform(all_coll_22,crs = "+proj=longlat +datum=NAD83")))
+write.csv(all_coll_22_dt, "D:/Sync/BVRC/WBP program/Restoration/Seed Collection/Data/AllSites_Caging2022.csv",
+          row.names = FALSE)
+```
+
+
+2022 survey flights in south Tweedsmuir:
+
+
+
+Alberta elemental occurences cleaning
+```{r}
+
+eo_dat <- read_sf("D:/Spatial Data/Whitebark pine/AB_elementalOccurence/ACIMS_NonSensitive_EOs_2022_08.shp")
+eo_dt <- as.data.table(eo_dat)
+
+wbp_eo_dt <- eo_dt[grep("whitebark",eo_dt$SCOMNAME),]
+write_sf(wbp_eo_dt, "D:/Spatial Data/Whitebark pine/AB_elementalOccurence/wbp_eo_dt.kml")
+write_sf(wbp_eo_dt, "D:/Spatial Data/Whitebark pine/AB_elementalOccurence/wbp_eo_dt.shp")
+
+
+
+
+```
+
+Critical habitat
+
+```{r}
+all_crit <- read_sf("D:/Spatial Data/Whitebark pine/endangeredSpecies_layer/WCP_CRITICAL_HABITAT_SP/CRTL_HAB_polygon.shp")
+all_crit_dt <- data.table(all_crit)
+
+wbp_crit_hab <- all_crit_dt[SCNTFC_NM=="Pinus albicaulis"]
+wbp_crit_hab_sf <- st_as_sf(wbp_crit_hab)
+write_sf(wbp_crit_hab_sf,"D:/Spatial Data/Whitebark pine/endangeredSpecies_layer/WCP_CRITICAL_HABITAT_SP/crit_hab_wbp.shp")
+
+```
+
+Data for DSS
+```{r}
+
+buff_pts <- read_sf("D:/Sync/BVRC/WBP program/RangeMapping/Data/DSS_TSA_critHab/Buffered_DSS_WBP.shp")
+
+buff_pts_up <- buff_pts %>%
+                  dplyr::select(geometry)
+buff <- st_cast(buff_pts_up, to="POLYGON")
+write_sf(buff, "D:/Sync/BVRC/WBP program/RangeMapping/Data/DSS_TSA_critHab/Buffered_DSS_WBP_poly.shp")
+
+```
+
+
+
+Updating the VRI given the flight observations
+
+Calculating the amount of WBP in the park based on old forest cover (nil in Tweeds, but present outside) + 2016 VRI update + flight overview
+
+VRI information:
+Interpretation date (Interpreta) = is the date the photo was interpretated
+
+Attribution base date (Attributio) = The date that the information about this polygon is considered to be based on. It is currently populated,however, it is ADVISABLE to use REFERENCE DATE attribute
+
+Projected date (projected_) = The date to which time dependent stand information is projected. Used to determine the date to which time dependent variables in the stand have been projected. Attributes that are projected to a future date include: -Age, Age Class, Height, Height Class, Type Identity, Stocking Class, All maps within a project
+area should be projected to the same date.
+
+Reference data (Reference1) = The date of the source data on which the interpretation is based. Known as the 'Reference Year' in the VIF file. In the VRI this is calculated from the year of the photo or source survey that was used to generate the VRI attribute.
+
+If there are >100 dead stems/ha , dead moves to D layer. So need both to assign forest type to a polygon. eg. R1 say 95% Pl, 3% At, 2% Sx, then the D layer says 100% Pli dead.
+
+OPENING_ID = Y/N whether it's a silvicultural opening
+
+Decisions:
+1. How big of an area to buffer around points. Will intersect different polygons and change the amount added to the VRI. Right now, I have it only as a point intesection, but will update later
+```{r}
+############## Import and clean VRI ################
+colsInterest <- c("FEATURE_ID","POLYGON_ID","INTERPRETA","ATTRIBUTIO","SPECIES_CD","SPECIES_PC","SPECIES__1",
+                  "SPECIES__2", "SPECIES__3", "SPECIES__4", "SPECIES__5", "SPECIES__6","SPECIES__7", 
+                  "SPECIES__8", "SPECIES__9", "SPECIES_10","VRI_LIVE_S","VRI_DEAD_S","geometry")
+
+## Pre-2016 VRI ####
+#this is the file I got from Blair Ells in 2011 at the start of my PhD
+orig_vri_pa <- read_sf("G:/Spatial Data/Forest Inventory/Whitebark Pine/VRI/VRI Master/prov_whitebark.shp")
+unique(orig_vri_pa$INTERPRETA)#seems to cover a wide range of dates
+orig_vri_pa_dat <- as.data.table(orig_vri_pa)
+rm(orig_vri_pa)
+gc()
+####################
+
+#### Post-2016 VRI ####
+#want to check the WBP calls in more recent VRIs
+#2018 VRI includes a mortality applied based on fire severity - update to 2019, or go back to 2016 prefire updates
+VRI_18 <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/VRI_2018.shp") #this is only the study area
+VRI_18dat <- as.data.table(VRI_18)
+#rm(VRI_18)
+#gc()
+colnames(VRI_18dat)
+##Querying the VRI for WBP
+VRI18_shrt <- VRI_18dat[,..colsInterest][SPECIES_CD=="PA"|SPECIES__1=="PA"|SPECIES__3=="PA"|SPECIES__5=="PA"|
+                        SPECIES__7=="PA"|SPECIES__9=="PA"]
+plot(st_as_sf(VRI18_shrt[SPECIES__3=="PA"])[,1])
+VRI18_PA <- VRI_18dat[SPECIES_CD=="PA"|SPECIES__1=="PA"|SPECIES__3=="PA"|SPECIES__5=="PA"|
+                        SPECIES__7=="PA"|SPECIES__9=="PA"]
+#write_sf(st_as_sf(VRI18_PA),"VRI18_PA.shp")
+
+# 2017 Dead layer
+VRI17_Dead <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/VRI17_dead_Tweeds.shp")
+VRI17_Deaddat <- as.data.table(VRI17_Dead)
+rm(VRI17_Dead)
+gc()
+VRI17_Dead_pa <- VRI17_Deaddat[SPECIES_CD=="PA"|SPECIES__1=="PA"|SPECIES__3=="PA"|SPECIES__5=="PA"|
+                        SPECIES__7=="PA"|SPECIES__9=="PA"]
+#write_sf(VRI17_Dead_pa,"VRI17_Dead_pa.shp")
+VRI19_Dead <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Dead_VRI2019.shp")
+VRI19_Deaddat <- as.data.table(VRI19_Dead)
+rm(VRI19_Dead)
+gc()
+VRI19_Dead_pa <- VRI19_Deaddat[SPECIES_CD=="PA"|SPECIES__1=="PA"|SPECIES__3=="PA"|SPECIES__5=="PA"|
+                        SPECIES__7=="PA"|SPECIES__9=="PA"]
+write_sf(st_as_sf(VRI19_Dead_pa),"VRI19_Dead_pa.shp")
+
+VRI20Tweeds <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/VRI20_Tweeds.shp")
+VRI20_DT <- as.data.table(VRI20Tweeds)
+VRI20_PA <- VRI20_DT[SPECIES_CD=="PA"|SPECIES__1=="PA"|SPECIES__3=="PA"|SPECIES__5=="PA"|
+                        SPECIES__7=="PA"|SPECIES__9=="PA"]
+write_sf(VRI20_PA, "G:/Spatial Data/Whitebark pine/Tweedsmuir/VRI20_Tweeds_PA.shp")
+
+#########################################################
+#Start here if want to skip reading in big files above:
+VRI18_PA <- read_sf("./VRI18_PA.shp")
+VRI17_Dead_pa <- read_sf("./VRI17_Dead_pa.shp")
+
+table(VRI17_Deaddat$EARLIEST_N)
+VRI17_Deaddat[,table(EARLIEST_N),by=SPECIES_CD]
+
+VRI18_paRast <- fasterize(VRI18_PA,Reg_SDM_s, background=0)
+
+#what if we intercept all VRI polygons that were created using LANDSAT and flag them as WBP? For mapping, I think it's the way to go. Not for validating though.
+VRI_18 <- st_transform(VRI_18,crs=crs(buff_pts))
+VRI_18_obsPolys <- st_join(st_as_sf(WBP_dat),VRI_18,join=st_intersects) #making points or changing WBP polygon size will change which polygons are intersected
+VRI_18_obsPolys_dat <- as.data.table(VRI_18_obsPolys)
+VRI_polys_flight <- st_as_sf(VRI_18dat[POLYGON_ID %in% VRI_18_obsPolys$POLYGON_ID])
+write_sf(VRI_polys_flight,"VRI_polys_flight.shp")
+
+VRI_paUpdate <- rbind(VRI18_PA,VRI_polys_flight) #trying a nearest neighbour approach to this now
+#write_sf(VRI_paUpdate,"VRI_paUpdats.shp")
+###################################################
+#Now trying a nearest neighbour approach to updating VRI with flight polygons
+#VRI18_PA <- read_sf("VRI18_PA.shp")
+WBP_dat <- read_sf("WBP_dat.shp")
+nn_pts_VRI <- st_join(WBP_dat,VRI_18, join=st_nn, k=3, maxdist=1000) #point features
+nn_pts_VRI_DT <- as.data.table(nn_pts_VRI)
+VRI18_DT <- as.data.table(VRI_18)
+VRI_sel <- VRI18_DT[FEATURE_ID %in% nn_pts_VRI_DT$FEATURE_ID]
+VRI_sel <- VRI_sel[!BCLCS_LE_1=="W"]
+st_write(VRI_sel,"VRI18_Surv.shp",append=FALSE)
+
+table(VRI_sel$BCLCS_LE_4)
+VRI_sel[POLYGON_ID==31]
+
+#VRI18_PA_w_SurvPA <- rbind(VRI18_PA,st_as_sf(VRI_sel))
+#st_write(VRI18_PA_w_SurvPA,"VRI18_PA_w_SurvPA.shp",append=FALSE)
+
+VRI_pre2016 <- read_sf("G:/Spatial Data/Forest Inventory/Whitebark Pine/VRI/VRI_PA.shp")
+VRI18_Surv <- read_sf("C:/Users/Alana2012/ALANA_FILES/GitHub/WBP/WBP_module/VRI18_Surv.shp")
+VRI18_PA <- read_sf("C:/Users/Alana2012/ALANA_FILES/GitHub/WBP/WBP_module/VRI18_PA.shp")
+VRI_pre2016dt <-as.data.table(VRI_pre2016)
+VRI18_Survdt <- as.data.table(VRI18_Surv)
+VRI18_PAdt <- as.data.table(VRI18_PA)
+colsInterest <- c("FEATURE_ID","POLYGON_ID","INTERPRETA","ATTRIBUTIO","SPECIES_CD","SPECIES_PC","SPECIES__1",
+                  "SPECIES__2", "SPECIES__3", "SPECIES__4", "SPECIES__5", "SPECIES__6","SPECIES__7", 
+                  "SPECIES__8", "SPECIES__9", "SPECIES_10","VRI_LIVE_S","VRI_DEAD_S","BASAL_AREA","LIVE_VOL_1",
+                  "LIVE_VOL_2", "LIVE_VOL_3", "LIVE_VOL_4", "LIVE_VOL_5", "LIVE_VOL_6", "LIVE_VOL_7",
+                  "LIVE_VOL_8", "LIVE_VOL_9", "LIVE_VO_10", "LIVE_VO_11", "LIVE_VO_12", "LIVE_VO_13" ,
+                  "LIVE_VO_14", "LIVE_VO_15", "LIVE_VO_16", "LIVE_VO_17", "DEAD_VOL_P", "DEAD_VOL_1",
+                  "DEAD_VOL_2", "DEAD_VOL_3", "DEAD_VOL_4", "DEAD_VOL_5", "DEAD_VOL_6", "DEAD_VOL_7",
+                  "DEAD_VOL_8", "DEAD_VOL_9", "DEAD_VO_10", "DEAD_VO_11", "DEAD_VO_12", "DEAD_VO_13",
+                  "DEAD_VO_14", "DEAD_VO_15", "DEAD_VO_16", "DEAD_VO_17", "LIVE_STAND", "LIVE_STA_1",
+                  "LIVE_STA_2", "DEAD_STAND", "DEAD_STA_1", "DEAD_STA_2", "geometry")
+
+VRI_combined <- rbind(st_as_sf(VRI_pre2016dt[,..colsInterest]),
+                      st_as_sf(VRI18_Survdt[,..colsInterest]),
+                      st_as_sf(VRI18_PAdt[,..colsInterest]))
+write_sf(VRI_combined, "VRI_combined_WBP.shp")
+```
+
+
+Predictive Models
+```{r}
+###### Import and clean Clason predictive models. Note these are already adjusted to account for thresholds in prediction
+Joint_SDM <-projectRaster(raster("./inputs/Adj_Joint.tif"),crs="+proj=aea +lat_0=45 +lon_0=-126 +lat_1=50 +lat_2=58.5 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs ")
+Local_SDM <-projectRaster(raster("./inputs/Adj_Loc.tif"),crs="+proj=aea +lat_0=45 +lon_0=-126 +lat_1=50 +lat_2=58.5 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs ")
+Reg_SDM <- projectRaster(raster("./inputs/Adj_Reg.tif"),crs="+proj=aea +lat_0=45 +lon_0=-126 +lat_1=50 +lat_2=58.5 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs ")
+
+Joint_SDM_s <- crop(Joint_SDM,extent(Study_area))
+writeRaster(Joint_SDM_s,"Joint_SDM_s.tif")
+
+#make the adjusted joint predicted map at the same resolution as the input raster
+Joint_1km <- aggregate(Joint_SDM_s,fact=4)
+###################################################
+
+##### Import and clean BEC predictive model
+Pa_BECpred <- st_read("G:/Spatial Data/Whitebark pine/ac_pinualb.gdb/ac_pinualb.gdb", layer = "Pa_lessthan10percent_subzonevariant") #Density column is the one flagging - I think there's a mistake, bc there polygon lines for >10% are there as well. so right now it can be both < AND > 10% cover.
+Pa_BECpred_g10 <- st_read("G:/Spatial Data/Whitebark pine/ac_pinualb.gdb/ac_pinualb.gdb", layer = "Pa_greaterthan10percent_subzonevariant")
+#Pa_BECpred_l10 <- st_erase(st_make_valid(Pa_BECpred),st_make_valid(Pa_BECpred_g10)) #not working - ended up doing this in ArcGIS :(
+#Pa_BECpred_l10 <- read_sf("G:/Spatial Data/Whitebark pine/Pa_less10_cleaned.shp")
+#colnames(Pa_BECpred_g10) <- colnames(Pa_BECpred_l10)
+#Pa_BECpred <- rbind(Pa_BECpred_l10,Pa_BECpred_g10)
+
+BEC_predrast <- fasterize(Pa_BECpred,Joint_SDM_s, background=0)
+writeRaster(BEC_predrast,"BEC_predrast.tif")
+
+
+###################################################
+```
+
+Clean the field validation data
+```{r}
+### Point data
+Day1GPS <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Waypoints_28-OCT-20.gpx", layer = "waypoints")
+Day2GPS <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Waypoints_30-OCT-20.gpx", layer = "waypoints")
+Day3GPS <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Waypoints_11-NOV-20.gpx", layer = "waypoints")
+Day4GPS <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Waypoints_25-NOV-20.gpx", layer = "waypoints")
+FieldDat <- fread("./inputs/data/WBP_in_Tweeds.csv")
+
+GPS_fileList <- list(Day1GPS,Day2GPS,Day3GPS,Day4GPS)
+GPS_datMerge <- list()
+for(i in 1:4){
+  #project to NAD83 Albers:
+  GPS_fileList[[i]] <- st_transform(GPS_fileList[[i]] ,crs="+proj=aea +lat_0=45 +lon_0=-126 +lat_1=50 +lat_2=58.5 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs ")
+  print(unique(length(FieldDat[Day==i]))==length(FieldDat[Day==i]))
+  GPS_datMerge[[i]] <- merge(GPS_fileList[[i]],FieldDat[Day==i],by.x="name", by.y="GPS#")
+}
+GPS_dat <- rbindlist(GPS_datMerge)
+#write_sf(st_as_sf(GPS_dat),"GPS_dat.shp")
+WBP_dat <- as.data.table(GPS_dat)[,.(name,Day,Day_GPS,IsTree,
+                                     Abundance,AbundCode,Beetle,
+                                     Rust,Fire,LiveDead,Notes,geometry)][IsTree==1]
+
+#write_sf(st_as_sf(WBP_dat),"WBP_dat.shp")
+#### 1km buffer around points
+buff_pts <-st_buffer(st_as_sf(WBP_dat), dist=500) #need to refine this buffer size, but could make this raster differently as well. 
+plot(st_simplify(buff_pts)[,1])
+#write_sf(st_union(buff_pts), "Buff_U.shp")
+###############
+
+### Track data
+Day2Track <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Track_30-OCT-20 212827.gpx", layer = "tracks")
+Day3Track <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Track_11-NOV-20 224234.gpx", layer = "tracks")
+Day4Track <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Track_25-NOV-20 140427.gpx", layer = "tracks")
+AllTracks <- rbind(Day2Track,Day3Track,Day4Track)
+AllTracks <- st_transform(AllTracks ,crs="+proj=aea +lat_0=45 +lon_0=-126 +lat_1=50 +lat_2=58.5 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs ")
+AllTracks <- AllTracks[,"name"]
+#write_sf(AllTracks,"AllTracks_RAW.shp")
+#bring in edited tracks to only have the areas actively sampled:
+SurveyTracks <- read_sf("./SurveyTrack.shp")
+st_length(SurveyTracks)
+#Adding zeros - knowing where I searched, but didn't find WBP
+Buff_SurveyTracks <- st_buffer(SurveyTracks,dist=250) #make distance the same as raster resolution **I think the results may be sensitive to the resolution applied here
+Trks_Less_Pts <- st_difference(Buff_SurveyTracks, st_union(buff_pts)) #erases all of y from x
+#write_sf(Trks_Less_Pts,"DiffTest.shp")
+TrckRast <- fasterize(Trks_Less_Pts,Joint_SDM_s, background=0) #I think the results will be sensitive to resolution applied here as well
+#writeRaster(TrckRast, "trackRast1.tif",overwrite=TRUE)
+TrckRastAbsPoints <- st_as_sf(rasterToPoints(TrckRast,fun=function(x){x==1}, spatial = TRUE))
+#write_sf(TrckRastAbsPoints,"TrckRastAbsPoints.shp")
+
+#For presence/absence analysis
+PresenceObs <- fasterize(buff_pts,Joint_SDM_s, background=0) #Raster
+AbsenceObs <- fasterize(Trks_Less_Pts,Joint_SDM_s, background=0) #Raster
+
+PA_rast <- PresenceObs
+PA_rast[PA_rast==1] <- 2 #present
+PA_rast[AbsenceObs] <- 1 #absent
+writeRaster(PA_rast, "PA_rast.tif",overwrite=TRUE)
+
+
+
+```
+
+
+Validating the predictive maps: 250m resolution
+```{r}
+############### clean rasters ############### 
+#make them all 0 = did not survey, 1 = absent and 2 = present
+#survey (observed)
+PA_rast <- raster("PA_rast.tif")
+PA_all <- PA_rast
+PA_rast[PA_rast==0]<-NA
+#Clason et al habitat model (predicted)
+Joint_SDM_s <- raster("Joint_SDM_s.tif") #probability from 0 to 1
+Joint_predrast <- Joint_SDM_s
+Joint_predrast[Joint_predrast>=0.5] <- 2
+Joint_predrast[Joint_predrast<0.5] <- 1
+Joint_predAll <- Joint_predrast
+Joint_predrast[is.na(PA_rast)] <- NA
+
+#BEC model (predicted)
+BEC_predrast <- raster("BEC_predrast.tif")
+BEC_predrast[BEC_predrast==1] <- 2
+BEC_predrast[BEC_predrast==0] <- 1
+BEC_predAll <- BEC_predrast
+BEC_predrast[is.na(PA_rast)] <- NA
+############################################# 
+writeRaster(Joint_predrast,"Joint_predrast.tif",overwrite=T)
+writeRaster(BEC_predrast,"BEC_predrast2.tif", overwrite=T)
+#how many observed presences were correctly predicted?
+calculate.RMSE <- function (x,y){sqrt(cellStats((x-y)^2, stat="mean"))}# x observed, y is Predicted 
+
+AllMaps <- stack(PA_rast,Joint_predAll,BEC_predAll)
+names(AllMaps) <- c("Observed","Clason_etal_Predicted","BEC_predicted")
+Plot(AllMaps,title=names(AllMaps),new=TRUE)
+
+SurveyedRoute <- stack(PA_rast,Joint_predrast,BEC_predrast)
+names(SurveyedRoute) <- c("Observed","Clason_etal_Predicted","BEC_predicted")
+Plot(SurveyedRoute,new=TRUE, title=names(SurveyedRoute), cols=c("blue","red"))
+
+#trying the sdm package:
+evaluates(PA_rast[],Joint_predrast[])
+evaluates(PA_rast[],BEC_predrast[])
+
+#trying the caret package:
+confusionMatrix(factor(PA_rast[],levels=1:2),factor(Joint_predrast[],levels=1:2), positive = "2")
+confusionMatrix(factor(PA_rast[],levels=1:2),factor(BEC_predrast[],levels=1:2),positive = "2")
+
+summary(lm(PA_rast[]~Joint_predrast[]))
+summary(lm(PA_rast[]~BEC_predrast[]))
+
+paste("RMSE for Clason et al predictive model is", round(calculate.RMSE(x=PA_rast,y=Joint_predrast),3))
+paste("RMSE for BEC predictive model is", round(calculate.RMSE(x=PA_rast,y=BEC_predrast),3))
+
+```
+51% accurate for Clason and 49% accurate for BEC
+R2 = 0.07 Clason, R2 = 0.0002 for BEC
+Predicted present when present: Clason = 0.36, BEC = 0.30
+Absent present when absent: Clason = 0.90, BEC = 0.70
+
+Creating the final map:
+```{r}
+VRI_combined <- read_sf("C:/Users/Alana2012/ALANA_FILES/GitHub/WBP/WBP_module/VRI_combined_WBP.shp")
+VRI_2020surv <- read_sf("VRI18_Surv.shp")
+VRI18_PA <- read_sf("VRI18_PA.shp")
+orig_vri_pa <- read_sf("G:/Spatial Data/Forest Inventory/Whitebark Pine/VRI/VRI Master/prov_whitebark.shp")
+
+VRI_2020surv2 <- VRI_2020surv %>% 
+  select("FEATURE_ID") %>%
+  mutate(FC_ver = 3)
+
+VRI18_PA2 <- VRI18_PA %>% 
+  select("FEATURE_ID") %>%
+  mutate(FC_ver = 2)
+
+orig_vri_pa2 <- orig_vri_pa %>% 
+  select("FEATURE_ID") %>%
+  mutate(FC_ver = 1)
+
+WBP_polys_combined <- rbind(orig_vri_pa2,VRI18_PA2,VRI_2020surv2) #combine all three (watch - orig is for the whole prov still)
+WBP_polys_combined$polyArea <- st_area(WBP_polys_combined) # call all the areas
+
+#just using the portion of Tweedsmuir surveyed in 2020
+Tweeds_split <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Tweeds_split.shp")
+Tweeds_N <- Tweeds_split[1,] 
+
+#clip WBP_polys by surveyed area:
+WBP_polys_TweedsN <- WBP_polys_combined %>%
+  filter(st_intersects(Tweeds_N,., sparse=FALSE))
+WBP_TweedsN_DT <- as.data.table(WBP_polys_TweedsN)
+WBP_TweedsN_DT[,AreaHa := unclass(polyArea)/10000]
+
+WBP_TweedsN_DT[,sum(AreaHa)]
+WBP_TweedsN_DT[,sum(AreaHa), by="FC_ver"]
+write_sf(WBP_polys_TweedsN,"WBP_polys_TweedsN.shp")
+```
+
+Estimating how many ha of WBP lost to wildfire (BA/ha?):
+```{r}
+
+fire_perimeters <- read_sf("G:/Spatial Data/FCI_Fire_Regen_spatialfiles/Historical wildfire perimeters/BC Wildfire Historical Fire Perimeters.shp",quiet=TRUE)
+fire2018 <- subset(fire_perimeters, FIRE_YEAR==2018)
+#just using the portion of Tweedsmuir surveyed in 2020
+Tweeds_split <- read_sf("G:/Spatial Data/Whitebark pine/Tweedsmuir/Tweeds_split.shp")
+Tweeds_N <- Tweeds_split[1,] 
+
+#intersecting with fire layer
+Tweeds_N_Fires <- filter(st_intersection(st_buffer(fire_perimeters,0), st_buffer(Tweeds_N,0), sparse = FALSE))
+Tweeds_N_Fires$areaHA <- unclass(st_area(Tweeds_N_Fires))/10000
+Tweeds_N_FiresDT <- as.data.table(Tweeds_N_Fires)
+Tweeds_N_FiresDT[,sum(areaHA)]
+Tweeds_N_FiresDT[,sum(areaHA),by="FIRE_YEAR"]
+Tweeds_N_FiresDT[FIRE_YEAR < 2004,sum(areaHA)] #8435
+Tweeds_N_FiresDT[FIRE_YEAR >= 2004,sum(areaHA)] #180870
+Tweeds_N_FiresDT[FIRE_YEAR == 2018,sum(areaHA)] #154390
+
+#VRI_combined <- read_sf("C:/Users/Alana2012/ALANA_FILES/GitHub/WBP/WBP_module/VRI_combined_WBP.shp")
+
+VRI_Tweeds_upd <- WBP_polys_TweedsN %>%
+  filter(st_intersects(Tweeds_N,.,sparse=FALSE))
+VRI_Tweeds_Dist <- st_union(VRI_Tweeds_upd,by_feature = FALSE)
+WBP_Tweeds_fires <- st_intersection(st_buffer(VRI_Tweeds_upd,0),st_buffer(Tweeds_N_Fires,0))
+WBP_Tweeds_fires$VRIpolyAreaHa <- unclass(st_area(WBP_Tweeds_fires))/10000
+WBP_Tweeds_firesDT <- as.data.table(WBP_Tweeds_fires)
+WBP_Tweeds_firesDT[,sum(VRIpolyAreaHa),by="FIRE_YEAR"]
+
+WBP_Tweeds_firesDT[,sum(VRIpolyAreaHa),by="FIRE_YEAR"][FIRE_YEAR==2018,2]/WBP_TweedsN_DT[,sum(AreaHa)]
+
+ggplot(TweedsAllFires)+
+  geom_col(aes(x=FIRE_YEAR,y=areaHA),fill="black")+
+  xlab("Fire year")+
+  scale_y_continuous(name="area burned (Ha)", labels = scales::comma,limits=c(0,300000))
+
+ggplot(subset(TweedsAllFires, FIRE_YEAR!=2018))+
+  geom_col(aes(x=FIRE_YEAR,y=areaHA),fill="black")+
+  xlab("Fire year")+
+  scale_y_continuous(name="area burned (Ha)", labels = scales::comma,limits=c(0,25000))
+
+ggplot(TweedsAllFires)+
+  geom_histogram(aes(FIRE_YEAR),fill="black")+
+  xlab("Fire year")
+
+
+
+```
+
+MPB
+Estimating MPB impact
+trace <1% in polygon recently killed
+light 1-10% in polygon recently killed
+Moderate 11-29% in polygon recently killed
+Severe 30-49% in polygon recently killed
+Very severe 50% in polygon recently killed
+```{r}
+pests <- read_sf("G:/Spatial Data/FCI_Fire_Regen_spatialfiles/AerialOverview_Pests/PestInfestation_MPB.shp")
+MPB_allYears <- pests %>%
+  filter(PEST_SPECI=="IBM")
+write_sf(MPB_allYears,"G:/Spatial Data/Disturbance/MPB/MPB_allYears.shp")
+yrs <- seq(min(MPB_allYears$CAPTURE_YE),max(MPB_allYears$CAPTURE_YE))
+MPByrList<- list()
+for(i in 1:length(yrs)){
+  MPByrList[[i]] <- MPB_allYears %>%
+    filter(CAPTURE_YE==yrs[i])
+  write_sf(st_as_sf(MPByrList[[i]]), paste0("G:/Spatial Data/Disturbance/MPB/MPB_",yrs[i],".shp"))
+}
+
+pest_1910_1929 <- read_sf("G:/Spatial Data/Disturbance/MPB/bc_pest_history/bc1910to1929.shp")
+MPB_1910_1929 <- pest_1910_1929 %>%
+  filter(FHF=="IBM")
+write_sf(MPB_1910_1929,"MPB_1910_1929.shp")
+
+pest_1970to1979 <- read_sf("G:/Spatial Data/Disturbance/MPB/bc_pest_history/bc1970to1979.shp")
+MPB_1970to1979 <- pest_1970to1979 %>%
+  filter(FHF=="IBM")
+write_sf(MPB_1970to1979,"MPB_1970to1979.shp")
+
+pest_1980to1989 <- read_sf("G:/Spatial Data/Disturbance/MPB/bc_pest_history/bc1980to1989.shp")
+MPB_1980to1989 <- pest_1980to1989 %>%
+  filter(FHF=="IBM")
+write_sf(MPB_1980to1989,"MPB_1980to1989.shp")
+
+pest_1990to1996 <- read_sf("G:/Spatial Data/Disturbance/MPB/bc_pest_history/bc1990to1996.shp")
+MPB_1990to1996 <- pest_1990to1996 %>%
+  filter(FHF=="IBM")
+write_sf(MPB_1990to1996,"MPB_1990to1996.shp")
+
+#turn into a raster
+#choosing 2013 beucase the outbreak is thoroughly done by then
+yrsRast <- seq(1994,2013)
+BCrast <- raster(MPB_allYears, res=1000)
+MPByrRastList<- list()
+for(i in 1:length(yrsRast)){
+  MPByr <- MPB_allYears %>%
+    filter(CAPTURE_YE==yrsRast[i])
+  MPByr <- MPByr %>% mutate(Mortality = case_when(PEST_SEV_1=="Trace" ~ 1,
+                                         PEST_SEV_1 =="Light" ~ 5,
+                                         PEST_SEV_1 =="Moderate" ~ 20,
+                                         PEST_SEV_1 =="Severe" ~ 40,
+                                         PEST_SEV_1 =="Very Severe"~ 50))
+  MPByrRastList[[i]] <- fasterize(MPByr,BCrast, field = "Mortality")
+}
+MPByrRastSt <- stack(MPByrRastList)
+MPB_CumRast <- calc(MPByrRastSt, fun=function(x) ifelse(sum(na.omit(x))>100,100,sum(na.omit(x))))
+
+writeRaster(MPB_CumRast,"G:/Spatial Data/Disturbance/MPB/MPB_CumRast.tif")
+writeRaster(MPB_CumRast,"G:/Spatial Data/Disturbance/MPB/MPB_CumRast.grd", overwrite=T)
+
+
+#VRI_combined <- read_sf("C:/Users/Alana2012/ALANA_FILES/GitHub/WBP/WBP_module/VRI_combined.shp")
+MPB_CumRast <- raster("G:/Spatial Data/Disturbance/MPB/MPB_CumRast.tif")
+VRI_Tweeds_upd <- WBP_polys_TweedsN
+
+#VRI_Tweeds_upd <- WBP_polys_TweedsN %>%
+ # filter(st_intersects(Tweeds_N,.,sparse=FALSE))
+
+a <- raster::extract(x = MPB_CumRast, y = VRI_Tweeds_upd, fun = mean) 
+VRI_Tweeds_upd$MeanMPB <- as.numeric(a)
+write_sf(VRI_Tweeds_upd,"VRI_TweedsMPB.shp")
+VRI_Tweeds_upd$PolyAreaHA <- unclass(st_area(VRI_Tweeds_upd))/10000
+VRI_Tweeds_updDT <- as.data.table(VRI_Tweeds_upd)
+round(VRI_Tweeds_updDT[,sum(PolyAreaHA)]) #73544 ha, now 67739ha
+#how many ha of WBP habitat with 0 MPB?
+round(VRI_Tweeds_updDT[MeanMPB==0, sum(PolyAreaHA)]) # 19952 ha, now 17163
+round(VRI_Tweeds_updDT[MeanMPB >0 & MeanMPB <25, sum(PolyAreaHA)]) #37300ha, now 36501
+round(VRI_Tweeds_updDT[MeanMPB >25 & MeanMPB <50, sum(PolyAreaHA)]) #10095 ha, now 9346
+round(VRI_Tweeds_updDT[MeanMPB >50 & MeanMPB <75, sum(PolyAreaHA)]) #3593 ha, now 3077
+round(VRI_Tweeds_updDT[MeanMPB >75 & MeanMPB <100, sum(PolyAreaHA)]) #1580 ha, now 949
+round(VRI_Tweeds_updDT[MeanMPB == 100, sum(PolyAreaHA)]) #515, now 331
+
+round(VRI_Tweeds_updDT[MeanMPB==0, sum(PolyAreaHA)])/round(VRI_Tweeds_updDT[,sum(PolyAreaHA)])  
+round(VRI_Tweeds_updDT[MeanMPB >0 & MeanMPB <25, sum(PolyAreaHA)])/round(VRI_Tweeds_updDT[,sum(PolyAreaHA)])  
+round(VRI_Tweeds_updDT[MeanMPB >25 & MeanMPB <50, sum(PolyAreaHA)])/round(VRI_Tweeds_updDT[,sum(PolyAreaHA)])  
+round(VRI_Tweeds_updDT[MeanMPB >50 & MeanMPB <75, sum(PolyAreaHA)])/round(VRI_Tweeds_updDT[,sum(PolyAreaHA)]) 
+round(VRI_Tweeds_updDT[MeanMPB >75 & MeanMPB <100, sum(PolyAreaHA)])/round(VRI_Tweeds_updDT[,sum(PolyAreaHA)])
+round(VRI_Tweeds_updDT[MeanMPB == 100, sum(PolyAreaHA)])/round(VRI_Tweeds_updDT[,sum(PolyAreaHA)])  
+
+#total area affected by MPB:
+round(VRI_Tweeds_updDT[MeanMPB >0, sum(PolyAreaHA)])/round(VRI_Tweeds_updDT[,sum(PolyAreaHA)]) 
+
+```
+
+RUST
+
+Zeglen data. Finally just processing it in R to make it traceable:
+0 = uninfected Pa
+1 = live, rust infected Pa
+2 = dead, rust-killed Pa
+3 = dead from other cause Pa
+The % are fractional (1 = 100%) and are calculated for each category.
+
+```{r}
+Zeglen_dat <- fread("C:/Users/Alana2012/ALANA_FILES/Academic/UNBC/Data/Field_Data/Zeglen/Pa_Statdat.csv")
+Zeglen_dat_lat_long<- Zeglen_dat[!is.na(North)]
+Zeglen_sf <- st_as_sf(Zeglen_dat_lat_long, coords = c("West", "North"), crs = "+proj=longlat +datum=WGS84 +no_defs ")
+Zeglen_Alb <- st_transform(Zeglen_sf ,crs="+proj=aea +lat_0=45 +lon_0=-126 +lat_1=50 +lat_2=58.5 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs ")
+write_sf(Zeglen_Alb,"Zeglen_Alb.shp")
+Zeglen_Tweeds <- Zeglen_Alb[st_intersects(st_as_sf(Zeglen_Alb),Tweeds_Bound,sparse=FALSE),]
+sum(Zeglen_Tweeds$`0`,Zeglen_Tweeds$`1`,Zeglen_Tweeds$`2`,Zeglen_Tweeds$`3`) #600 trees. The plots with no lat/long are mostly in Tweeds, so that is the difference between paper = 850 and here, 600. 
+Zeglen_noLatLong_Tweeds <- Zeglen_dat[is.na(North)][2:6,][,c("North","West"):=NULL] #assumption that these are in Tweedsmuir. Not sure about Octopus lake
+Zeglen_LatLong_Tweeds <- as.data.table(Zeglen_Tweeds)[,geometry:=NULL]
+Zeglan_Tweeds_dat <- rbind(Zeglen_LatLong_Tweeds,Zeglen_noLatLong_Tweeds)
+sum(Zeglan_Tweeds_dat$`0`,Zeglan_Tweeds_dat$`1`,Zeglan_Tweeds_dat$`2`,Zeglan_Tweeds_dat$`3`) #now it's 850!
+Zeglen_NW <- as.data.table(Zeglen_Alb[st_intersects(st_as_sf(Zeglen_Alb),Study_area,sparse=FALSE),])
+sum(Zeglen_NW$`0`,Zeglen_NW$`1`,Zeglen_NW$`2`,Zeglen_NW$`3`) #paper suggest 1992, we have 1942 here.
+
+##### SOUTHERN TWEEDS INCIDENCE
+#in 2000, WPBR incidence rates in Tweeds:
+sum(Zeglan_Tweeds_dat$`1`,Zeglan_Tweeds_dat$`2`)/sum(Zeglan_Tweeds_dat$`0`,Zeglan_Tweeds_dat$`1`,Zeglan_Tweeds_dat$`2`,Zeglan_Tweeds_dat$`3`) #0.3 - live and dead rust infected together
+sum(Zeglan_Tweeds_dat$`1`)/sum(Zeglan_Tweeds_dat$`0`,Zeglan_Tweeds_dat$`1`,Zeglan_Tweeds_dat$`2`,Zeglan_Tweeds_dat$`3`) #0.2 - live infected alone
+
+##### SOUTHERN TWEEDS INCIDENCE
+#in 2000, WPBR incidence rates in Tweeds:
+sum(Zeglen_NW$`1`,Zeglen_NW$`2`)/sum(Zeglen_NW$`0`,Zeglen_NW$`1`,Zeglen_NW$`2`,Zeglen_NW$`3`) #0.43 - live and dead rust infected together
+sum(Zeglen_NW$`1`)/sum(Zeglen_NW$`0`,Zeglen_NW$`1`,Zeglen_NW$`2`,Zeglen_NW$`3`) #0.37 - live infected alone
+
+
+```
+
+
+Quantifying the amount of WBP in the park: 
+- can start here by reading in a previously saved Updated VRI 
+```{r}
+
+
+VRI_paUpdate <- read_sf("VRI_paUpdats.shp")
+VRI_paUpdate$area <- st_area(VRI_paUpdate)
+VRI_paUpdate_dat <- as.data.table(VRI_paUpdate)
+VRI_paUpdate_dat[,area:=unclass(area)] 
+colsInterest <- c("FEATURE_ID","POLYGON_ID","INTERPRETA","ATTRIBUTIO","SPECIES_CD","SPECIES_PC","SPECIES__1",
+                  "SPECIES__2", "SPECIES__3", "SPECIES__4", "SPECIES__5", "SPECIES__6","SPECIES__7", 
+                  "SPECIES__8", "SPECIES__9", "SPECIES_10","VRI_LIVE_S","VRI_DEAD_S","BASAL_AREA","LIVE_VOL_1",
+                  "LIVE_VOL_2", "LIVE_VOL_3", "LIVE_VOL_4", "LIVE_VOL_5", "LIVE_VOL_6", "LIVE_VOL_7",
+                  "LIVE_VOL_8", "LIVE_VOL_9", "LIVE_VO_10", "LIVE_VO_11", "LIVE_VO_12", "LIVE_VO_13" ,
+                  "LIVE_VO_14", "LIVE_VO_15", "LIVE_VO_16", "LIVE_VO_17", "DEAD_VOL_P", "DEAD_VOL_1",
+                  "DEAD_VOL_2", "DEAD_VOL_3", "DEAD_VOL_4", "DEAD_VOL_5", "DEAD_VOL_6", "DEAD_VOL_7",
+                  "DEAD_VOL_8", "DEAD_VOL_9", "DEAD_VO_10", "DEAD_VO_11", "DEAD_VO_12", "DEAD_VO_13",
+                  "DEAD_VO_14", "DEAD_VO_15", "DEAD_VO_16", "DEAD_VO_17", "LIVE_STAND", "LIVE_STA_1",
+                  "LIVE_STA_2", "DEAD_STAND", "DEAD_STA_1", "DEAD_STA_2", "FEATURE_AR", "area", "geometry")
+VRI_paUpdate_dat_sel <-  VRI_paUpdate_dat[,..colsInterest]
+
+sp_col <- c("SPECIES_CD","SPECIES__1","SPECIES__3","SPECIES__5", "SPECIES__7","SPECIES__9")
+sp_cov <- c("SPECIES_PC","SPECIES__2","SPECIES__4","SPECIES__6", "SPECIES__8","SPECIES__10")
+noquote(sp_col[i])
+for(i in 1:length(sp_col)){
+  VRI_paUpdate_dat_sel[get(sp_col[i]) == "PA"]
+}
+
+
+if(VRI_paUpdate_dat_sel[get(sp_col[1]) == "PA"]){
+  
+}
+
+VRI_paUpdate_dat_sel[get(sp_col[1]) == "PA"]
+```
+
+
+```{r}
+water <- read_sf("G:/Spatial Data/Water/waterbodies/waterbodies.shp")
+range(water$SHAPE_Area)
+unique(water$DESCRIPTIO)
+lake_water <- subset(water, TYPE=="L")
+sub_water <- subset(lake_water, SHAPE_Area > 5000000)
+st_write(sub_water, "G:/Spatial Data/Water/waterbodies/Large_lakes.shp")
+```
+
+
+
+Importing from KML (don't need to do as the first day track is saved with day 2)
+```{r}
+Chik_trail <- lapply(plot_file_names,read_keyhole)
+#Chik <- do.call(rbind.data.frame, Chik_trail)
+st_write(Chik_trail[[1]],dsn= "Chikamin Ridge Trail", layer= "Chik_trail.shp", driver = "ESRI Shapefile", overwrite=TRUE) #Chikamin Trail
+
+#Import Route file from IPAD
+files_loc <- "G:/Spatial Data/Whitebark pine/Tweedsmuir/"
+RouteNums <- 1 #set the plot numbers to import
+plot_file_names <- list()
+for(i in 1:length(RouteNums)){
+  plot_file_names[[i]] <- paste0(files_loc,"Route-Day",RouteNums[i],".kmz")
+}
+plot_file_names <- paste0(files_loc,"Chikamin Ridge Trail.kmz")
+read_keyhole <- function(file) {
+  # get file extension
+  ext <- strsplit(basename(file), split = '//.')[[1]][-1]
+  # if kml
+  if (ext == 'kml') {
+    layers <- st_layers(file)$name
+    if (length(layers) > 1) {
+      return(Reduce('rbind', lapply(layers, sG::read_sf, dsn = file)))
+    }
+    return(read_sf(file))
+  } else {
+    target_file <- '.temp.kml.zip'
+    fs::file_copy(file, target_file, overwrite = T)
+    unzip(target_file, overwrite = T)
+    sf_out <- read_sf('doc.kml')
+    fs::file_delete(target_file)
+    fs::file_delete('doc.kml')
+    return(sf_out)
+  }
+}
+
+Routes_list <- lapply(plot_file_names,read_keyhole)
+Routes <- do.call(rbind.data.frame, Routes_list)
+write_sf(Routes,"Routes.shp") #Day 1 track
+
+```
+
+
+
+```{r}
+
+trees_rast <- raster("D:/Spatial Data/NFI_trees/CA_forest_lead_tree_species/CA_forest_lead_tree_species.tif")
+
+#just select Pinus albicaulis
+pa_rast <- trees_rast==21
+
+cellStats(pa_rast, sum)
+
+#clip to bc and alberta
+bc <- read_sf("D:/Spatial Data/Administrative/BC/ABMS_PROVINCE_SP/ABMS_PROV_polygon.shp")
+bc <- st_union(bc)
+#mask NFI raster:
+pa_bc <- terra::crop(pa_rast, st_bbox(bc))
+
+Which(pa_rast==1, cells=FALSE)
+plot(pa_rast)
+writeRaster(pa_rast, "pa_rast_nfi.tif")
+```
+
+
+Range map
+```{r}
+
+#get ground and aerial plots and buffer them
+ground_plts <- st_read("D:/Sync/BVRC/WBP program/RangeMapping/Data/ForEclipse/Ground_Plots.shp")%>%
+  st_make_valid(.)
+air_plots <- st_read("D:/Sync/BVRC/WBP program/RangeMapping/Data/ForEclipse/Aerial_surveys.shp")%>%
+  st_make_valid(.)
+
+grnd_dt <- as.data.table(ground_plts)
+air_dt <- as.data.table(air_plots)
+
+pts_sf <- st_as_sf(rbind(air_dt[,.(geometry)],grnd_dt[,.(geometry)]))
+pts_buff <- st_union(st_buffer(pts_sf, dist = 6000))
+
+st_write(pts_buff,"D:/Github/WBP/Inputs/SpatialData/Mapping/pts_buff.gpkg")
+VRI_paUpdate %>%
+  ggplot() +
+  geom_sf() +
+  theme_minimal()
+
+#take in VRI:
+VRI_paUpdate <- st_read("D:/Github/WBP/Inputs/SpatialData/Mapping/VRI_combined_WBP.shp")%>%
+  dplyr::select("geometry")%>%
+  st_union(.)%>%
+  st_transform(.,crs=crs(pts_buff))%>%
+  st_make_valid()
+
+VRI_buff <- st_buffer(VRI_paUpdate, dist = 6000)
+
+vri_pts <- st_union(pts_buff,VRI_paUpdate)
+
+
+```
+
+
+Restoration
+
+```{r}
+
+nanika_peri <- st_read("D:/Sync/BVRC/WBP program/Restoration/Planting/Spatial Data/Mapping_Peri/Nanika/NanikaPeri.shp")
+
+st_area(nanika_peri)/10000
+
+```
+
+
+
+
+
+
